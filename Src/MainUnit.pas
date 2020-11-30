@@ -139,6 +139,11 @@ type
     ThumbMake: TJkhFlatButton;
     AlertPanel: TPanel;
     AlertPanelHideTimer: TJkhTimer;
+    humbnailheight1: TMenuItem;
+    Menu_100px: TMenuItem;
+    Menu_200px: TMenuItem;
+    Menu_300px: TMenuItem;
+    Menu_custompx: TMenuItem;
     procedure BrowerEditorChange(Sender: TObject);
     procedure URLUpdateTimerTimer(Sender: TObject);
     procedure ThumbViewListDrawNode(Sender: TBaseVirtualTree;
@@ -167,6 +172,7 @@ type
     procedure SaveThumbnailButtonClick(Sender: TObject);
     procedure AlertPanelHideTimerTimer(Sender: TObject);
     procedure ThumbViewListKeyPress(Sender: TObject; var Key: Char);
+    procedure Menu_SelectPxClick(Sender: TObject);
   private
     FScreenLogPixels: Integer;
     FAutoUpdateThread: TAutoPlayThread;
@@ -193,6 +199,7 @@ const
   Const_VarRememberLastPath: String = 'RememberLastPath';
   Const_VarLastPath: String = 'LastPath';
   Const_ThumbnailTimeGap: String = 'ThumbnailTimeGap';
+  Const_ThumbnailHeight: String = 'ThumbnailHeight';
   Const_TargetVideoFileExts: String = 'TargetVideoFileExtension';
   Const_TargetPictureFileExts: String = 'TargetPictureFileExtension';
   Const_ViewTimeline: String = 'ViewTimeline';
@@ -1631,7 +1638,8 @@ procedure TMainform.FormCreate(Sender: TObject);
 var
   SFI: TSHFileInfo;
   DC: HDC;
-  TimeGapStr: String;
+  ConfigParseInt: Integer;
+  ConfigParseStr: String;
 begin
   Randomize;
 
@@ -1663,10 +1671,10 @@ begin
 
   Menu_ViewTimeline.Checked := (FConfigFile.Values[Const_ViewTimeline] = 'true');
 
-  TimeGapStr := FConfigFile.Values[Const_ThumbnailTimeGap];
-  If TimeGapStr <> '' Then
+  ConfigParseStr := FConfigFile.Values[Const_ThumbnailTimeGap];
+  If ConfigParseStr <> '' Then
   Begin
-     TryStrToInt(TimeGapStr, ThumbnailTimeGap);
+     TryStrToInt(ConfigParseStr, ThumbnailTimeGap);
      If ThumbnailTimeGap = 60000000 Then
         Menu_TimeGap1Min.Checked := True
      Else If ThumbnailTimeGap = 180000000 Then
@@ -1677,6 +1685,21 @@ begin
         Menu_TimeGap10Min.Checked := True
      Else
         Menu_TimeGapCustom.Checked := True;
+  End;
+
+  ConfigParseStr := FConfigFile.Values[Const_ThumbnailHeight];
+  If ConfigParseStr <> '' Then
+  Begin
+     TryStrToInt(ConfigParseStr, ConfigParseInt);
+     ThumbViewList.DefaultNodeHeight := ConfigParseInt;
+     If ConfigParseInt = 100 Then
+        Menu_100px.Checked := True
+     Else If ConfigParseInt = 200 Then
+        Menu_200px.Checked := True
+     Else If ConfigParseInt = 300 Then
+        Menu_300px.Checked := True
+     Else
+        Menu_CustomPx.Checked := True;
   End;
 
   FTargetVideoFileExts := Trim(FConfigFile.Values[Const_TargetVideoFileExts]);
@@ -1794,6 +1817,7 @@ begin
      FConfigFile.Values[Const_VarRememberLastPath] := BrowerEditor.Text;
 
   FConfigFile.Values[Const_ThumbnailTimeGap] := IntToStr(ThumbnailTimeGap);
+  FConfigFile.Values[Const_ThumbnailHeight] := IntToStr(ThumbViewList.DefaultNodeHeight);
 
   FConfigFile.Values[Const_TargetVideoFileExts] := FTargetVideoFileExts;
   FConfigFile.Values[Const_TargetPictureFileExts] := FTargetPictureFileExts;
@@ -1813,11 +1837,14 @@ begin
 
      // 갱신 스레드
      If Data.Attributes = 0 Then
+     Begin
+        FAutoUpdateThread.FItemHeight := ThumbViewList.DefaultNodeHeight;
         {$if CompilerVersion <= 15}
         FAutoUpdateThread.PrepareFile(UTF8Encode(Data.FullPath))
         {$else}
         FAutoUpdateThread.PrepareFile(Data.FullPath)
         {$ifend}
+     End
      Else
         FAutoUpdateThread.PrepareFile('');
   End;
@@ -1907,10 +1934,13 @@ procedure TMainform.ThumbViewListCompareNodes(Sender: TBaseVirtualTree;
   Node1, Node2: PVirtualNode; Column: TColumnIndex; var Result: Integer);
 var
   Data1, Data2: PShellObjectData;
+const
+  SortDirectionToValueD: Array[TSortDirection] of Integer = (-1, 1);
+  SortDirectionToValueR: Array[TSortDirection] of Integer = (1, -1);
 begin
   Data1 := Sender.GetNodeData(Node1);
   Data2 := Sender.GetNodeData(Node2);
-  
+
   Result := 0;
 
   If (Data1 = nil) or (Data2 = nil) then Exit;
@@ -1919,7 +1949,13 @@ begin
      0:
      begin
         Result := Data2.Attributes - Data1.Attributes;
-        If Result <> 0 Then Exit;
+
+        if (Data1.Display = '..') then
+           Result := SortDirectionToValueD[ThumbViewList.Header.SortDirection]
+        else if (Data2.Display = '..') then
+           Result := SortDirectionToValueR[ThumbViewList.Header.SortDirection];
+
+        if Result <> 0 Then Exit;
 
         Result := CompareStr(Data1.Display, Data2.Display);
      end;
@@ -1946,6 +1982,12 @@ end;
 procedure TMainform.Info1Click(Sender: TObject);
 begin
   MessageBox(Self.Handle, PChar('NS Thumb VIEW' + #13#10#13#10 + Const_VersionString), 'Program info', MB_OK or MB_ICONINFORMATION);
+end;
+
+procedure TMainform.Menu_SelectPxClick(Sender: TObject);
+begin
+  ThumbViewList.DefaultNodeHeight := (Sender as TMenuItem).Tag;
+  MakeVDTList(BrowerEditor.Text, True);
 end;
 
 procedure TMainform.Menu_TimeGapCustomClick(Sender: TObject);
